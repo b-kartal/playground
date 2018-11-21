@@ -1,21 +1,3 @@
-from collections import defaultdict
-import queue
-import random
-
-import numpy as np
-
-from . import BaseAgent
-from .. import constants
-from .. import utility
-
-
-def _agent_in_board(obs,agent):
-    alive=obs['alive']
-    if agent in alive:
-            return True
-    return False
-
-
 '''The base simple agent use to train agents.
 This agent is also the benchmark for other agents.
 '''
@@ -30,13 +12,13 @@ from .. import constants
 from .. import utility
 
 
-class SimpleAgent(BaseAgent):
+class SimpleAgentNoBombs(BaseAgent):
     """This is a baseline agent. After you can beat it, submit your agent to
     compete.
     """
 
     def __init__(self, *args, **kwargs):
-        super(SimpleAgent, self).__init__(*args, **kwargs)
+        super(SimpleAgentNoBombs, self).__init__(*args, **kwargs)
 
         # Keep track of recently visited uninteresting positions so that we
         # don't keep visiting the same places.
@@ -66,11 +48,6 @@ class SimpleAgent(BaseAgent):
         items, dist, prev = self._djikstra(
             board, my_position, bombs, enemies, depth=10)
 
-        ##Here the agent commits suicide is LearningAgent is not on the board##
-        # LearningAgent = constants.Item.Agent0.value
-        # if _agent_in_board(obs, LearningAgent) == False:
-        #    return constants.Action.Bomb.value
-
         # Move if we are in an unsafe place.
         unsafe_directions = self._directions_in_range_of_bomb(
             board, my_position, bombs, dist)
@@ -80,16 +57,16 @@ class SimpleAgent(BaseAgent):
             return random.choice(directions).value
 
         # Lay pomme if we are adjacent to an enemy.
-        if self._is_adjacent_enemy(items, dist, enemies) and self._maybe_bomb(
-                ammo, blast_strength, items, dist, my_position):
-            return constants.Action.Bomb.value
+        #if self._is_adjacent_enemy(items, dist, enemies) and self._maybe_bomb(
+        #        ammo, blast_strength, items, dist, my_position):
+        #    return constants.Action.Bomb.value
 
         # Move towards an enemy if there is one in exactly three reachable spaces.
-        direction = self._near_enemy(my_position, items, dist, prev, enemies, 3)
-        if direction is not None and (self._prev_direction != direction or
-                                      random.random() < .5):
-            self._prev_direction = direction
-            return direction.value
+        #direction = self._near_enemy(my_position, items, dist, prev, enemies, 3)
+        #if direction is not None and (self._prev_direction != direction or
+        #                              random.random() < .5):
+        #    self._prev_direction = direction
+        #    return direction.value
 
         # Move towards a good item if there is one within two reachable spaces.
         direction = self._near_good_powerup(my_position, items, dist, prev, 2)
@@ -97,19 +74,19 @@ class SimpleAgent(BaseAgent):
             return direction.value
 
         # Maybe lay a bomb if we are within a space of a wooden wall.
-        if self._near_wood(my_position, items, dist, prev, 1):
-            if self._maybe_bomb(ammo, blast_strength, items, dist, my_position):
-                return constants.Action.Bomb.value
-            else:
-                return constants.Action.Stop.value
+        #if self._near_wood(my_position, items, dist, prev, 1):
+        #    if self._maybe_bomb(ammo, blast_strength, items, dist, my_position):
+        #        return constants.Action.Bomb.value
+        #    else:
+        #        return constants.Action.Stop.value
 
         # Move towards a wooden wall if there is one within two reachable spaces and you have a bomb.
-        direction = self._near_wood(my_position, items, dist, prev, 2)
-        if direction is not None:
-            directions = self._filter_unsafe_directions(board, my_position,
-                                                        [direction], bombs)
-            if directions:
-                return directions[0].value
+        #direction = self._near_wood(my_position, items, dist, prev, 2)
+        #if direction is not None:
+        #    directions = self._filter_unsafe_directions(board, my_position,
+        #                                                [direction], bombs)
+        #    if directions:
+        #        return directions[0].value
 
         # Choose a random but valid direction.
         directions = [

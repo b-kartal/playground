@@ -1,21 +1,3 @@
-from collections import defaultdict
-import queue
-import random
-
-import numpy as np
-
-from . import BaseAgent
-from .. import constants
-from .. import utility
-
-
-def _agent_in_board(obs,agent):
-    alive=obs['alive']
-    if agent in alive:
-            return True
-    return False
-
-
 '''The base simple agent use to train agents.
 This agent is also the benchmark for other agents.
 '''
@@ -30,13 +12,13 @@ from .. import constants
 from .. import utility
 
 
-class SimpleAgent(BaseAgent):
+class DemonstratorAgent(BaseAgent):
     """This is a baseline agent. After you can beat it, submit your agent to
     compete.
     """
 
     def __init__(self, *args, **kwargs):
-        super(SimpleAgent, self).__init__(*args, **kwargs)
+        super(DemonstratorAgent, self).__init__(*args, **kwargs)
 
         # Keep track of recently visited uninteresting positions so that we
         # don't keep visiting the same places.
@@ -66,10 +48,7 @@ class SimpleAgent(BaseAgent):
         items, dist, prev = self._djikstra(
             board, my_position, bombs, enemies, depth=10)
 
-        ##Here the agent commits suicide is LearningAgent is not on the board##
-        # LearningAgent = constants.Item.Agent0.value
-        # if _agent_in_board(obs, LearningAgent) == False:
-        #    return constants.Action.Bomb.value
+        filtered_actions = self.filter_legal_actions(obs)
 
         # Move if we are in an unsafe place.
         unsafe_directions = self._directions_in_range_of_bomb(
@@ -77,31 +56,56 @@ class SimpleAgent(BaseAgent):
         if unsafe_directions:
             directions = self._find_safe_directions(
                 board, my_position, unsafe_directions, bombs, enemies)
-            return random.choice(directions).value
+            simple_action=random.choice(directions).value
+     #       print (simple_action,filtered_actions,simple_action not in filtered_actions,1)
+            if simple_action not in filtered_actions:
+                simple_action = random.choice(filtered_actions)
+            return simple_action
 
         # Lay pomme if we are adjacent to an enemy.
         if self._is_adjacent_enemy(items, dist, enemies) and self._maybe_bomb(
                 ammo, blast_strength, items, dist, my_position):
-            return constants.Action.Bomb.value
+            simple_action = constants.Action.Bomb.value
+      #      print (simple_action,filtered_actions,simple_action not in filtered_actions,2)
+            if simple_action not in filtered_actions:
+                simple_action = random.choice(filtered_actions)
+            return simple_action
 
         # Move towards an enemy if there is one in exactly three reachable spaces.
         direction = self._near_enemy(my_position, items, dist, prev, enemies, 3)
         if direction is not None and (self._prev_direction != direction or
                                       random.random() < .5):
             self._prev_direction = direction
-            return direction.value
+            simple_action=direction.value
+      #      print (simple_action,filtered_actions,simple_action not in filtered_actions,3)
+            if simple_action not in filtered_actions:
+                simple_action =random.choice(filtered_actions)
+                self._prev_direction = constants.Action(simple_action)
+            return simple_action
 
         # Move towards a good item if there is one within two reachable spaces.
         direction = self._near_good_powerup(my_position, items, dist, prev, 2)
         if direction is not None:
-            return direction.value
+            simple_action = direction.value
+#            print (simple_action,filtered_actions,simple_action not in filtered_actions,4)
+            if simple_action not in filtered_actions:
+                simple_action = random.choice(filtered_actions)
+            return simple_action
 
         # Maybe lay a bomb if we are within a space of a wooden wall.
         if self._near_wood(my_position, items, dist, prev, 1):
             if self._maybe_bomb(ammo, blast_strength, items, dist, my_position):
-                return constants.Action.Bomb.value
+                simple_action=constants.Action.Bomb.value
+   #             print(simple_action, filtered_actions,simple_action not in filtered_actions,5)
+                if simple_action not in filtered_actions:
+                    simple_action =random.choice(filtered_actions)
+                return simple_action
             else:
-                return constants.Action.Stop.value
+                simple_action=constants.Action.Stop.value
+  #              print(simple_action, filtered_actions,simple_action not in filtered_actions,6)
+                if simple_action not in filtered_actions:
+                    simple_action = random.choice(filtered_actions)
+                return simple_action
 
         # Move towards a wooden wall if there is one within two reachable spaces and you have a bomb.
         direction = self._near_wood(my_position, items, dist, prev, 2)
@@ -109,7 +113,11 @@ class SimpleAgent(BaseAgent):
             directions = self._filter_unsafe_directions(board, my_position,
                                                         [direction], bombs)
             if directions:
-                return directions[0].value
+                simple_action=directions[0].value
+     #           print(simple_action, filtered_actions, simple_action not in filtered_actions,7)
+                if simple_action not in filtered_actions:
+                    simple_action = random.choice(filtered_actions)
+                return simple_action
 
         # Choose a random but valid direction.
         directions = [
@@ -132,7 +140,11 @@ class SimpleAgent(BaseAgent):
         self._recently_visited_positions = self._recently_visited_positions[
                                            -self._recently_visited_length:]
 
-        return random.choice(directions).value
+        simple_action = random.choice(directions).value
+   #     print(simple_action, filtered_actions, simple_action not in filtered_actions,8)
+        if simple_action not in filtered_actions:
+            simple_action=random.choice(filtered_actions)
+        return simple_action
 
     @staticmethod
     def _djikstra(board, my_position, bombs, enemies, depth=None, exclude=None):
@@ -466,3 +478,140 @@ class SimpleAgent(BaseAgent):
         if not ret:
             ret = directions
         return ret
+
+    def filter_legal_actions(self, observ):
+        my_position = tuple(observ['position'])
+        board = np.array(observ['board'])
+        bomb_life = observ['bomb_life']
+        blast_st = observ['bomb_blast_strength']
+        enemies = [constants.Item(e) for e in observ['enemies']]
+        ammo = int(observ['ammo'])
+
+        directions = [constants.Action.Left, constants.Action.Up, constants.Action.Right, constants.Action.Down]
+        ret = [constants.Action.Stop.value]
+        if ammo > 0:
+            ret.append(constants.Action.Bomb.value)
+        unsafe_positions = self.surely_unsafe_positions(observ)
+        for direction in directions:
+            position = utility.get_next_position(my_position, direction)
+            if not utility.position_on_board(board, position):
+                continue
+            if position in unsafe_positions:
+                continue
+            if self.position_is_passable(board, position, enemies):
+                if not self.position_has_no_escape(observ, position):
+                    ret.append(direction.value)
+            elif utility.position_in_items(board, position, [constants.Item.Bomb]) and observ['can_kick']:
+                life = int(bomb_life[position])
+                pos = utility.get_next_position(position, direction)
+                test = []
+                for i in range(life):
+                    if utility.position_on_board(board, pos) and self.position_is_passable(board, pos, enemies):
+                        test.append(True)
+                    else:
+                        test.append(False)
+                    pos = utility.get_next_position(position, direction)
+                # can kick and kick direction is valid
+                if all(test):
+                    ret.append(direction.value)
+        if my_position in self.surely_unsafe_positions(observ) and len(ret) > 1:
+            ret.remove(constants.Action.Stop.value)  # if Stop is unsafe, dont stop
+        return ret
+
+    def position_is_passable(self, board, pos, enemies):
+        # hard code the smallest agent id on board
+        if board[pos] >= 10:
+            return False
+        return utility.position_is_passable(board, pos, enemies)
+
+    def surely_unsafe_positions(self, observ):
+        my_position = observ['position']
+        board = observ['board']
+        bomb_life = observ['bomb_life']
+        blast_st = observ['bomb_blast_strength']
+        enemies = [constants.Item(e) for e in observ['enemies']]
+        all_other_agents = [e.value for e in observ['enemies']] + [observ['teammate'].value]
+
+        going_to_explode_bomb_positions = list(zip(*np.where(bomb_life == 1)))
+        directions = [constants.Action.Left, constants.Action.Up, constants.Action.Right, constants.Action.Down]
+        may_be_kicked = []
+        for pos in going_to_explode_bomb_positions:
+            for direction in directions:
+                pos2 = utility.get_next_position(pos, direction)
+                if not utility.position_on_board(board, pos2):
+                    continue
+                if board[pos2] in all_other_agents:
+                    # mark to kicked
+                    # may_be_kicked.append(pos)
+                    break
+        surely_danger_bomb_positions = [pos for pos in going_to_explode_bomb_positions if pos not in may_be_kicked]
+        danger_positions = set()
+        covered_bomb_positions = set()
+        for pos in surely_danger_bomb_positions:
+            self.add_to_danger_positions(pos, danger_positions, observ, covered_bomb_positions)
+
+        all_covered = set()
+        while len(covered_bomb_positions) > 0:
+            for pos in list(covered_bomb_positions):
+                self.add_to_danger_positions(pos, danger_positions, observ, covered_bomb_positions)
+                all_covered.add(pos)
+
+            for pos in list(covered_bomb_positions):
+                if pos in all_covered:
+                    covered_bomb_positions.remove(pos)
+
+        # print('agent pos:', my_position, 'danger:', danger_positions)
+        return danger_positions
+
+    def add_to_danger_positions(self, pos, danger_positions, observ, covered_bomb_positions):
+        '''due to bombing chain, bombs with life>=2 would still blow up if they are in the danger positions '''
+        blast_st = observ['bomb_blast_strength']
+        bomb_life = observ['bomb_life']
+        sz = int(blast_st[pos])
+        x, y = pos
+        danger_positions.add(pos)
+        for i in range(1, sz):
+            pos2 = (x + i, y)
+            if utility.position_on_board(observ['board'], pos2):
+                danger_positions.add(pos2)
+                if bomb_life[pos2] > 1:
+                    covered_bomb_positions.add(pos2)
+            pos2 = (x - i, y)
+            if utility.position_on_board(observ['board'], pos2):
+                danger_positions.add(pos2)
+                if bomb_life[pos2] > 1:
+                    covered_bomb_positions.add(pos2)
+            pos2 = (x, y + i)
+            if utility.position_on_board(observ['board'], pos2):
+                danger_positions.add(pos2)
+                if bomb_life[pos2] > 1:
+                    covered_bomb_positions.add(pos2)
+            pos2 = (x, y - i)
+            if utility.position_on_board(observ['board'], pos2):
+                danger_positions.add(pos2)
+                if bomb_life[pos2] > 1:
+                    covered_bomb_positions.add(pos2)
+
+    def position_has_no_escape(self, observ, position):
+        enemies = [constants.Item(e) for e in observ['enemies']]
+        board = observ['board']
+        blast_st = observ['bomb_blast_strength']
+        bomb_life = observ['bomb_life']
+        agent_position = observ['position']
+        directions = [constants.Action.Left, constants.Action.Up, constants.Action.Right, constants.Action.Down]
+        for direction in directions:
+            position2 = utility.get_next_position(position, direction)
+            if not utility.position_on_board(board, position2):
+                continue
+            if position2 == agent_position and bomb_life[position2] < 0.1:
+                # can go back
+                return False
+            if position2 == agent_position and bomb_life[position2] > 0.1 and observ['can_kick']:
+                pos3 = utility.get_next_position(agent_position, direction)
+                if utility.position_on_board(board, pos3) and self.position_is_passable(board, pos3, enemies):
+                    # cankick doest matter even there is a bomb
+                    return False
+            if position2 != agent_position and self.position_is_passable(board, position2, enemies):
+                # passage is always ok
+                return False
+        return True
